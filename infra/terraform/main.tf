@@ -182,6 +182,8 @@ resource "aws_instance" "airflow" {
 
   associate_public_ip_address = true
 
+  user_data = file("user_data.sh")
+
   root_block_device {
     volume_size = 30
     volume_type = "gp3"
