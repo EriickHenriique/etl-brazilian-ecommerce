@@ -17,6 +17,9 @@ variable "aws_region" { type = string }
 variable "db_name" { type = string }
 variable "db_user" { type = string }
 variable "allowed_cidr" { type = string }
+variable "allowed_ssh_cidr" { type = string }
+variable "key_pair_name" { type = string }
+
 
 # Configuração da Região
 provider "aws" {
@@ -50,7 +53,7 @@ module "vpc" {
   azs            = ["${var.aws_region}a", "${var.aws_region}b"]
   public_subnets = ["10.10.101.0/24", "10.10.102.0/24"]
 
-  
+
   private_subnets    = []
   enable_nat_gateway = false
   single_nat_gateway = false
@@ -89,8 +92,8 @@ resource "aws_db_subnet_group" "this" {
 
 # Senha forte aleatória
 resource "random_password" "db" {
-  length  = 24
-  special = true
+  length           = 24
+  special          = true
   override_special = "!#$%&'()*+,-.:;<=>?[]^_{|}~"
 }
 
@@ -115,7 +118,7 @@ resource "aws_db_instance" "postgres" {
   publicly_accessible = true
   multi_az            = false
 
-  
+
   backup_retention_period  = 0
   delete_automated_backups = true
   deletion_protection      = false
@@ -126,6 +129,71 @@ resource "aws_db_instance" "postgres" {
 
   apply_immediately = true
 }
+
+resource "aws_security_group" "ec2" {
+  name        = "ec2-airflow-sg"
+  description = "EC2 Airflow"
+  vpc_id      = module.vpc.vpc_id
+
+  # SSH
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ssh_cidr]
+  }
+
+  # Airflow Webserver
+  ingress {
+    description = "Airflow Web UI"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ssh_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"]
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+}
+
+
+resource "aws_instance" "airflow" {
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = "t3.micro"
+  key_name      = var.key_pair_name
+
+  subnet_id              = module.vpc.public_subnets[0]
+  vpc_security_group_ids = [aws_security_group.ec2.id]
+
+  associate_public_ip_address = true
+
+  root_block_device {
+    volume_size = 30
+    volume_type = "gp3"
+  }
+
+  tags = {
+    Name = "airflow-ec2"
+    Env  = "dev"
+  }
+}
+
+
 
 output "bucket_name" {
   value = aws_s3_bucket.example.bucket
@@ -150,4 +218,12 @@ output "db_user" {
 output "db_password" {
   value     = random_password.db.result
   sensitive = true
+}
+
+output "ec2_public_ip" {
+  value = aws_instance.airflow.public_ip
+}
+
+output "ec2_ssh" {
+  value = "ssh ubuntu@${aws_instance.airflow.public_ip}"
 }
