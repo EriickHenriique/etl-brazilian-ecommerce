@@ -14,6 +14,15 @@ apt-get install -y \
   gnupg \
   git
 
+
+if ! swapon --show | grep -q '/swapfile'; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 # Docker repo + key
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
