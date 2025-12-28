@@ -33,7 +33,7 @@ resource "random_id" "bucket_suffix" {
 
 # Bucket
 resource "aws_s3_bucket" "example" {
-  bucket        = "orders-ecommerce-${random_id.bucket_suffix.hex}"
+  bucket        = "orders-ecommerce"
   force_destroy = true
 
   tags = {
