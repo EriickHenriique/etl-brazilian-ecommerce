@@ -8,13 +8,11 @@ REPO_DIR="/home/ubuntu/etl-brazilian-ecommerce"
 apt-get update -y
 
 # Instala dependências
-apt-get install -y \
-  ca-certificates \
-  curl \
-  gnupg \
-  git
+apt-get install -y ca-certificates curl gnupg git
 
-
+# ---------------------------
+# Criar SWAP de 2GB (t3.micro)
+# ---------------------------
 if ! swapon --show | grep -q '/swapfile'; then
   fallocate -l 2G /swapfile
   chmod 600 /swapfile
@@ -50,21 +48,30 @@ if [ -d "$REPO_DIR/.git" ]; then
 else
   cd /home/ubuntu
   git clone "$REPO_URL"
-  cd "$REPO_DIR"
 fi
+
+# Garantir dono do repo pro ubuntu
+chown -R ubuntu:ubuntu "$REPO_DIR" || true
 
 # Criar diretórios esperados pelo compose
 mkdir -p "$REPO_DIR/dags" "$REPO_DIR/logs" "$REPO_DIR/plugins"
 
-# Ajustar permissões para o UID do ubuntu (normalmente 1000)
-AIRFLOW_UID=$(id -u ubuntu)
-echo "AIRFLOW_UID=$AIRFLOW_UID" > "$REPO_DIR/.env"
+# UID do Airflow dentro do container
+AIRFLOW_UID=50000
+
+# Criar .env pro docker compose ler
+cat > "$REPO_DIR/.env" <<EOF
+AIRFLOW_UID=$AIRFLOW_UID
+AIRFLOW_ADMIN_USER=admin
+AIRFLOW_ADMIN_PASSWORD=admin
+AIRFLOW_ADMIN_FIRSTNAME=Admin
+AIRFLOW_ADMIN_LASTNAME=User
+AIRFLOW_ADMIN_EMAIL=admin@example.com
+EOF
+
+# Ajustar permissões para o UID do Airflow
 chown -R "$AIRFLOW_UID":0 "$REPO_DIR/dags" "$REPO_DIR/logs" "$REPO_DIR/plugins"
 
-# (opcional) garantir que o ubuntu seja dono do repo também
-chown -R ubuntu:ubuntu "$REPO_DIR" || true
-
-# Subir Airflow (init primeiro)
-cd "$REPO_DIR"
-docker compose up airflow-init
-docker compose up -d
+# Subir Airflow (init primeiro) como ubuntu
+sudo -u ubuntu -H bash -lc "cd $REPO_DIR && docker compose up airflow-init"
+sudo -u ubuntu -H bash -lc "cd $REPO_DIR && docker compose up -d"
